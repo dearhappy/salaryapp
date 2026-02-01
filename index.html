@@ -98,7 +98,7 @@
                         
                         const newEntry = { type, modelURL, mesh: new THREE.Group() };
                         
-                        if (modelURL && modelURL.includes('.glb')) {
+                        if (modelURL && (modelURL.includes('.glb') || modelURL.includes('.gltf'))) {
                             // Load External 3D Model (Animals/Birds/Humans)
                             loader.load(modelURL, (gltf) => {
                                 const model = gltf.scene;
