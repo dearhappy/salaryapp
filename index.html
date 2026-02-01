@@ -3,132 +3,152 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Scaffolding Construction Live</title>
+    <title>Universal 3D Story Engine</title>
     <style>
         body { margin: 0; background-color: #111; color: white; font-family: sans-serif; overflow: hidden; }
-        #ui { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; border: 1px solid #444; pointer-events: none; }
+        #ui { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; border: 1px solid #444; pointer-events: none; max-width: 300px; }
         .status { color: #00ff00; font-weight: bold; }
         canvas { display: block; }
+        .hint { font-size: 11px; opacity: 0.7; margin-top: 8px; line-height: 1.4; }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <h2>Scaffolding Site Monitor</h2>
-        <p>Syncing with Google Sheets...</p>
-        <p>Status: <span class="status" id="loadStatus">Idle</span></p>
-        <small>Source: Published CSV</small>
+        <h2 style="margin:0 0 10px 0; font-size: 18px;">3D Story Engine</h2>
+        <p style="margin:5px 0;">Status: <span class="status" id="loadStatus">Idle</span></p>
+        <div class="hint">
+            <strong>Sheet Headers Required:</strong><br>
+            Object, X, Y, Z, Color, Scale, RotateY, ModelURL
+        </div>
+        <div class="hint">
+            <strong>Supported:</strong> Primitives (Cube, Sphere) or Custom Models via GLB URL.
+        </div>
     </div>
 
-    <!-- Load Three.js from CDN -->
     <script type="importmap">
-        { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+        { 
+            "imports": { 
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            } 
+        }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // --- 1. SETTINGS ---
-        // Using your new published CSV URL
+        // --- 1. CONFIGURATION ---
         const CSV_URL = `https://docs.google.com/spreadsheets/d/e/2PACX-1vTMbJzqQVMMq0ihFb_gNbb7w93gk0ocrRkAXZoWGLDZQpl15-mJoU9W_l6Fcdnvfv0bUZ13CYmZyM1K/pub?output=csv`;
 
-        // --- 2. THE STAGE ---
+        // --- 2. SETUP ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x222222);
-        scene.fog = new THREE.Fog(0x222222, 10, 50);
+        scene.background = new THREE.Color(0x87ceeb); // Sky Blue
+        scene.fog = new THREE.Fog(0x87ceeb, 20, 100);
 
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
-        camera.position.set(15, 10, 25);
-        camera.lookAt(0, 5, 0);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(30, 20, 30);
+        camera.lookAt(0, 0, 0);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        // Lights
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-        scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-        dirLight.position.set(10, 20, 10);
-        scene.add(dirLight);
+        const loader = new GLTFLoader();
 
-        // Ground Grid
-        const grid = new THREE.GridHelper(100, 50, 0x444444, 0x222222);
-        scene.add(grid);
+        // Lighting
+        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+        sun.position.set(10, 50, 10);
+        sun.castShadow = true;
+        scene.add(sun);
 
-        // --- 3. DATA SYNC LOGIC ---
-        let objectMap = new Map(); // Store 3D objects by their row index
+        // Green Grass Floor
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(200, 200),
+            new THREE.MeshStandardMaterial({ color: 0x348C31 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // --- 3. OBJECT MANAGEMENT ---
+        let objectMap = new Map();
 
         async function fetchSheetData() {
             try {
                 document.getElementById('loadStatus').innerText = "Syncing...";
                 const response = await fetch(CSV_URL);
                 const csvData = await response.text();
-                
-                // Parse CSV
-                const rows = csvData.split('\n').map(r => r.split(',').map(cell => cell.replace(/"/g, '')));
-                const dataRows = rows.slice(1); // Remove header
+                const rows = csvData.split('\n').map(r => r.split(',').map(cell => cell.replace(/"/g, '').trim()));
+                const dataRows = rows.slice(1);
 
                 dataRows.forEach((row, index) => {
-                    const [type, x, y, z, color] = row;
-                    if (!type || type.trim() === "") return;
+                    // Expected Columns: Object, X, Y, Z, Color, Scale, RotateY, ModelURL
+                    const [type, x, y, z, color, scale, rotateY, modelURL] = row;
+                    if (!type) return;
 
-                    let mesh = objectMap.get(index);
+                    let entry = objectMap.get(index);
 
-                    // Create object if it doesn't exist
-                    if (!mesh) {
-                        let geometry;
-                        if (type.toLowerCase().includes("pole")) {
-                            geometry = new THREE.CylinderGeometry(0.15, 0.15, 4);
+                    // If model source changed or object doesn't exist, create it
+                    if (!entry || entry.type !== type || entry.modelURL !== modelURL) {
+                        if (entry) scene.remove(entry.mesh);
+                        
+                        const newEntry = { type, modelURL, mesh: new THREE.Group() };
+                        
+                        if (modelURL && modelURL.includes('.glb')) {
+                            // Load External 3D Model (Animals/Birds/Humans)
+                            loader.load(modelURL, (gltf) => {
+                                const model = gltf.scene;
+                                model.traverse(n => { if (n.isMesh) n.castShadow = true; });
+                                newEntry.mesh.add(model);
+                            });
                         } else {
-                            geometry = new THREE.BoxGeometry(5, 0.2, 1.5);
+                            // Basic Shapes
+                            let geo;
+                            if (type.toLowerCase() === 'sphere') geo = new THREE.SphereGeometry(0.5);
+                            else if (type.toLowerCase() === 'cone') geo = new THREE.ConeGeometry(0.5, 1);
+                            else geo = new THREE.BoxGeometry(1, 1, 1);
+                            
+                            const mat = new THREE.MeshStandardMaterial({ color: color || "#ffffff" });
+                            const basicMesh = new THREE.Mesh(geo, mat);
+                            basicMesh.castShadow = true;
+                            newEntry.mesh.add(basicMesh);
                         }
                         
-                        const material = new THREE.MeshStandardMaterial({ color: color || "#ffcc00" });
-                        mesh = new THREE.Mesh(geometry, material);
-                        scene.add(mesh);
-                        objectMap.set(index, mesh);
+                        scene.add(newEntry.mesh);
+                        objectMap.set(index, newEntry);
+                        entry = newEntry;
                     }
 
-                    // Update position smoothly
-                    mesh.position.lerp(new THREE.Vector3(parseFloat(x), parseFloat(y), parseFloat(z)), 0.1);
+                    // Update Position, Scale, and Rotation smoothly
+                    const s = parseFloat(scale) || 1;
+                    entry.mesh.scale.lerp(new THREE.Vector3(s, s, s), 0.1);
+                    entry.mesh.position.lerp(new THREE.Vector3(parseFloat(x), parseFloat(y), parseFloat(z)), 0.1);
+                    entry.mesh.rotation.y = THREE.MathUtils.lerp(entry.mesh.rotation.y, (parseFloat(rotateY) || 0) * (Math.PI / 180), 0.1);
                 });
 
                 document.getElementById('loadStatus').innerText = "Connected";
             } catch (err) {
-                console.error("Fetch Error:", err);
-                document.getElementById('loadStatus').innerText = "Error (Check Share Settings)";
-                document.getElementById('loadStatus').style.color = "red";
+                document.getElementById('loadStatus').innerText = "Sync Error";
             }
         }
 
-        // --- 4. ENGINE ---
         function animate() {
             requestAnimationFrame(animate);
-            
-            // Subtle camera orbit for dynamic video feel
-            const timer = Date.now() * 0.0002;
-            camera.position.x = Math.cos(timer) * 30;
-            camera.position.z = Math.sin(timer) * 30;
-            camera.lookAt(0, 5, 0);
-
             renderer.render(scene, camera);
         }
 
-        // Sync every 1 second
         setInterval(fetchSheetData, 1000);
-        
-        // Start
         animate();
 
-        // Handle Resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-
     </script>
 </body>
 </html>
