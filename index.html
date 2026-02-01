@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional Salary Calculator</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- PDF Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Custom font for a more professional look */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        /* Hide the slip template from the main view, but keep it renderable */
+        #hidden-slip-container {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+        }
+
+        /* Specific styling for the generated slip to ensure high quality text */
+        .salary-slip-print {
+            width: 300px; /* Base width for ratio calculation */
+            height: 200px; /* Base height for ratio calculation */
+            background: white;
+            padding: 10px;
+            border: 1px solid #000;
+            font-family: 'Courier New', Courier, monospace; /* Classic slip font */
+            font-size: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const { Calculator, Download, DollarSign, User, Clock, Calendar, FileText, CheckCircle } = lucide;
+
+        function App() {
+            // State for form inputs
+            const [formData, setFormData] = useState({
+                empName: '',
+                grossSalary: '',
+                totalWorkingDays: '26', // Default standard month
+                actualWorkingDays: '',
+                otRate: '',
+                otHours: '',
+                pfDeduction: '',
+                esiDeduction: '',
+                ptDeduction: ''
+            });
+
+            const [calculations, setCalculations] = useState({
+                basicEarned: 0,
+                otAmount: 0,
+                totalGross: 0,
+                totalDeductions: 0,
+                netSalary: 0
+            });
+
+            const [isGenerating, setIsGenerating] = useState(false);
+
+            // Handle Input Changes
+            const handleChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({
+                    ...prev,
+                    [name]: value
+                }));
+            };
+
+            // Calculate Logic
+            useEffect(() => {
+                const gross = parseFloat(formData.grossSalary) || 0;
+                const totalDays = parseFloat(formData.totalWorkingDays) || 1; // Avoid division by zero
+                const presentDays = parseFloat(formData.actualWorkingDays) || 0;
+                const rateOT = parseFloat(formData.otRate) || 0;
+                const hoursOT = parseFloat(formData.otHours) || 0;
+                
+                const pf = parseFloat(formData.pfDeduction) || 0;
+                const esi = parseFloat(formData.esiDeduction) || 0;
+                const pt = parseFloat(formData.ptDeduction) || 0;
+
+                // 1. Calculate Per Day Salary
+                const perDaySalary = gross / totalDays;
+
+                // 2. Calculate Actual Earned Basic (Prorated)
+                const basicEarned = perDaySalary * presentDays;
+
+                // 3. Calculate OT Amount
+                const otAmount = rateOT * hoursOT;
+
+                // 4. Total Gross Earnings
+                const totalGross = basicEarned + otAmount;
+
+                // 5. Total Deductions
+                const totalDeductions = pf + esi + pt;
+
+                // 6. Net Salary
+                const netSalary = totalGross - totalDeductions;
+
+                setCalculations({
+                    basicEarned: Math.max(0, basicEarned),
+                    otAmount: Math.max(0, otAmount),
+                    totalGross: Math.max(0, totalGross),
+                    totalDeductions: Math.max(0, totalDeductions),
+                    netSalary: Math.max(0, netSalary)
+                });
+
+            }, [formData]);
+
+            // Generate PDF Function
+            const generatePDF = async () => {
+                if (!formData.empName) {
+                    alert("Please enter Employee Name first.");
+                    return;
+                }
+                
+                setIsGenerating(true);
+                
+                // Wait for DOM to update
+                setTimeout(async () => {
+                    const element = document.getElementById('salary-slip-template');
+                    
+                    try {
+                        // Create canvas from the element
+                        const canvas = await html2canvas(element, {
+                            scale: 4, // Higher scale for better resolution
+                            useCORS: true,
+                            backgroundColor: '#ffffff'
+                        });
+
+                        // Initialize jsPDF
+                        // Orientation: landscape, Unit: inch, Format: [3, 2]
+                        const { jsPDF } = window.jspdf;
+                        const doc = new jsPDF({
+                            orientation: 'landscape',
+                            unit: 'in',
+                            format: [3, 2] 
+                        });
+
+                        const imgData = canvas.toDataURL('image/png');
+                        
+                        // Add image to PDF (x, y, width, height)
+                        // We use the full 3x2 canvas
+                        doc.addImage(imgData, 'PNG', 0, 0, 3, 2);
+                        
+                        // Save file
+                        const fileName = `${formData.empName.replace(/\s+/g, '_')}_SalarySlip.pdf`;
+                        doc.save(fileName);
+                    } catch (error) {
+                        console.error("PDF Generation failed", error);
+                        alert("Could not generate PDF. Please try again.");
+                    }
+                    
+                    setIsGenerating(false);
+                }, 100);
+            };
+
+            const formatCurrency = (amount) => {
+                return new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'USD', // Change to 'INR', 'EUR' etc as needed
+                    minimumFractionDigits: 2
+                }).format(amount);
+            };
+
+            return (
+                <div className="min-h-screen pb-12">
+                    {/* Header */}
+                    <header className="bg-slate-900 text-white p-4 shadow-lg sticky top-0 z-10">
+                        <div className="max-w-2xl mx-auto flex items-center gap-2">
+                            <Calculator size={24} className="text-blue-400" />
+                            <h1 className="text-xl font-bold">Payroll Pro</h1>
+                        </div>
+                    </header>
+
+                    <div className="max-w-2xl mx-auto p-4 space-y-6 mt-4">
+                        
+                        {/* Employee Details Card */}
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                            <h2 className="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                                <User size={18} className="text-blue-600"/> Employee Details
+                            </h2>
+                            <div className="space-y-3">
+                                <label className="block text-sm font-medium text-slate-600">Employee Name</label>
+                                <input 
+                                    type="text" 
+                                    name="empName"
+                                    value={formData.empName}
+                                    onChange={handleChange}
+                                    placeholder="e.g. John Doe"
+                                    className="w-full p-3 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Calculations Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            
+                            {/* Earnings Section */}
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                                <h2 className="text-lg font-semibold text-emerald-700 mb-4 flex items-center gap-2">
+                                    <DollarSign size={18} /> Earnings Parameters
+                                </h2>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Gross Salary (Monthly)</label>
+                                        <input 
+                                            type="number" name="grossSalary" 
+                                            value={formData.grossSalary} onChange={handleChange}
+                                            className="mt-1 w-full p-2 border-b-2 border-slate-200 focus:border-emerald-500 outline-none bg-transparent transition"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <div className="flex gap-4">
+                                        <div className="flex-1">
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">OT Rate / Hr</label>
+                                            <input 
+                                                type="number" name="otRate" 
+                                                value={formData.otRate} onChange={handleChange}
+                                                className="mt-1 w-full p-2 border-b-2 border-slate-200 focus:border-emerald-500 outline-none bg-transparent"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Attendance Section */}
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                                <h2 className="text-lg font-semibold text-blue-700 mb-4 flex items-center gap-2">
+                                    <Calendar size={18} /> Attendance
+                                </h2>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Total Days</label>
+                                            <input 
+                                                type="number" name="totalWorkingDays" 
+                                                value={formData.totalWorkingDays} onChange={handleChange}
+                                                className="mt-1 w-full p-2 border-b-2 border-slate-200 focus:border-blue-500 outline-none bg-transparent"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Actual Days</label>
+                                            <input 
+                                                type="number" name="actualWorkingDays" 
+                                                value={formData.actualWorkingDays} onChange={handleChange}
+                                                className="mt-1 w-full p-2 border-b-2 border-slate-200 focus:border-blue-500 outline-none bg-transparent"
+                                                placeholder="0"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">OT Hours Worked</label>
+                                        <input 
+                                            type="number" name="otHours" 
+                                            value={formData.otHours} onChange={handleChange}
+                                            className="mt-1 w-full p-2 border-b-2 border-slate-200 focus:border-blue-500 outline-none bg-transparent"
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Deductions Section */}
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 md:col-span-2">
+                                <h2 className="text-lg font-semibold text-rose-700 mb-4 flex items-center gap-2">
+                                    <FileText size={18} /> Deductions
+                                </h2>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">PF</label>
+                                        <input 
+                                            type="number" name="pfDeduction" 
+                                            value={formData.pfDeduction} onChange={handleChange}
+                                            className="mt-1 w-full p-2 border-b-2 border-slate-200 focus:border-rose-500 outline-none bg-transparent"
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">ESI</label>
+                                        <input 
+                                            type="number" name="esiDeduction" 
+                                            value={formData.esiDeduction} onChange={handleChange}
+                                            className="mt-1 w-full p-2 border-b-2 border-slate-200 focus:border-rose-500 outline-none bg-transparent"
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">PT</label>
+                                        <input 
+                                            type="number" name="ptDeduction" 
+                                            value={formData.ptDeduction} onChange={handleChange}
+                                            className="mt-1 w-full p-2 border-b-2 border-slate-200 focus:border-rose-500 outline-none bg-transparent"
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Live Summary */}
+                        <div className="bg-slate-800 text-white rounded-xl p-6 shadow-xl">
+                            <h3 className="text-sm uppercase text-slate-400 font-bold mb-4 tracking-wider">Salary Breakdown</h3>
+                            <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                    <span>Prorated Basic:</span>
+                                    <span>{formatCurrency(calculations.basicEarned)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span>OT Pay:</span>
+                                    <span>{formatCurrency(calculations.otAmount)}</span>
+                                </div>
+                                <div className="flex justify-between text-rose-300">
+                                    <span>Total Deductions:</span>
+                                    <span>- {formatCurrency(calculations.totalDeductions)}</span>
+                                </div>
+                                <div className="h-px bg-slate-600 my-2"></div>
+                                <div className="flex justify-between text-2xl font-bold text-blue-300">
+                                    <span>Net Pay:</span>
+                                    <span>{formatCurrency(calculations.netSalary)}</span>
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={generatePDF}
+                                disabled={isGenerating}
+                                className="mt-6 w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg flex items-center justify-center gap-2 transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isGenerating ? 'Generating...' : (
+                                    <>
+                                        <CheckCircle size={20} /> Download Slip (3" x 2")
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Hidden Template for PDF Generation */}
+                    <div id="hidden-slip-container">
+                        <div id="salary-slip-template" className="salary-slip-print">
+                            <div style={{borderBottom: '2px solid #000', paddingBottom: '4px', marginBottom: '4px'}}>
+                                <div style={{fontSize: '14px', fontWeight: 'bold', textAlign: 'center'}}>SALARY SLIP</div>
+                                <div style={{fontSize: '8px', textAlign: 'center', color: '#444'}}>{new Date().toLocaleDateString()}</div>
+                            </div>
+
+                            <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '9px'}}>
+                                <div><b>Name:</b> {formData.empName || 'N/A'}</div>
+                                <div><b>Days:</b> {formData.actualWorkingDays}/{formData.totalWorkingDays}</div>
+                            </div>
+
+                            <div style={{display: 'flex', width: '100%', border: '1px solid #ddd'}}>
+                                <div style={{width: '50%', borderRight: '1px solid #ddd', padding: '4px'}}>
+                                    <div style={{fontWeight: 'bold', marginBottom: '4px', textDecoration: 'underline'}}>EARNINGS</div>
+                                    <div style={{display: 'flex', justifyContent: 'space-between'}}><span>Basic:</span> <span>{Math.round(calculations.basicEarned)}</span></div>
+                                    <div style={{display: 'flex', justifyContent: 'space-between'}}><span>OT ({formData.otHours}h):</span> <span>{Math.round(calculations.otAmount)}</span></div>
+                                    <div style={{display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginTop: '4px'}}><span>Total:</span> <span>{Math.round(calculations.totalGross)}</span></div>
+                                </div>
+                                <div style={{width: '50%', padding: '4px'}}>
+                                    <div style={{fontWeight: 'bold', marginBottom: '4px', textDecoration: 'underline'}}>DEDUCTIONS</div>
+                                    <div style={{display: 'flex', justifyContent: 'space-between'}}><span>PF:</span> <span>{formData.pfDeduction || 0}</span></div>
+                                    <div style={{display: 'flex', justifyContent: 'space-between'}}><span>ESI:</span> <span>{formData.esiDeduction || 0}</span></div>
+                                    <div style={{display: 'flex', justifyContent: 'space-between'}}><span>PT:</span> <span>{formData.ptDeduction || 0}</span></div>
+                                    <div style={{display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', marginTop: '4px'}}><span>Total:</span> <span>{Math.round(calculations.totalDeductions)}</span></div>
+                                </div>
+                            </div>
+
+                            <div style={{marginTop: 'auto', borderTop: '2px solid #000', paddingTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                <div style={{fontSize: '8px', fontStyle: 'italic'}}>Auth. Sign</div>
+                                <div style={{fontSize: '12px', fontWeight: 'bold'}}>NET PAY: {Math.round(calculations.netSalary)}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+    <script>
+        // Start icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
