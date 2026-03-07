@@ -3,152 +3,495 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal 3D Story Engine</title>
+    <title>Worker Salary Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
-        body { margin: 0; background-color: #111; color: white; font-family: sans-serif; overflow: hidden; }
-        #ui { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; border: 1px solid #444; pointer-events: none; max-width: 300px; }
-        .status { color: #00ff00; font-weight: bold; }
-        canvas { display: block; }
-        .hint { font-size: 11px; opacity: 0.7; margin-top: 8px; line-height: 1.4; }
+        /* Keep print styles just in case user uses browser menu, but primary action is now JPG download */
+        @media print {
+            body, html { background-color: white !important; margin: 0; padding: 0; }
+            .print-hidden { display: none !important; }
+            .print-exact { color-adjust: exact; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .shadow-lg { box-shadow: none !important; border: 1px solid #e2e8f0; }
+        }
     </style>
 </head>
-<body>
+<body class="bg-white font-sans min-h-screen text-slate-800">
 
-    <div id="ui">
-        <h2 style="margin:0 0 10px 0; font-size: 18px;">3D Story Engine</h2>
-        <p style="margin:5px 0;">Status: <span class="status" id="loadStatus">Idle</span></p>
-        <div class="hint">
-            <strong>Sheet Headers Required:</strong><br>
-            Object, X, Y, Z, Color, Scale, RotateY, ModelURL
+    <!-- SEARCH VIEW -->
+    <div id="search-view" class="p-4 sm:p-6 flex flex-col items-center min-h-screen">
+        <!-- Header -->
+        <div class="w-full max-w-lg mb-8 mt-4 sm:mt-10 text-center">
+            <div class="inline-flex items-center justify-center p-3 bg-blue-100 rounded-full mb-4 text-blue-600">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Worker Salary Portal</h1>
+            <p class="text-slate-500 mt-2">Search to download your salary slip</p>
         </div>
-        <div class="hint">
-            <strong>Supported:</strong> Primitives (Cube, Sphere) or Custom Models via GLB URL.
+
+        <!-- Search Box -->
+        <div class="w-full max-w-lg bg-white rounded-2xl shadow-sm border border-slate-200 p-2 mb-6">
+            <div class="relative flex items-center">
+                <svg class="w-5 h-5 text-slate-400 absolute left-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input
+                    type="text"
+                    id="search-input"
+                    placeholder="Enter Name..."
+                    class="w-full pl-12 pr-10 py-4 bg-transparent outline-none text-slate-800 placeholder-slate-400 font-medium text-lg"
+                />
+                <button id="clear-search" class="absolute right-4 text-slate-400 hover:text-slate-600 p-1 hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Container -->
+        <div id="results-container" class="w-full max-w-lg space-y-3">
+            <!-- Results injected here -->
+        </div>
+
+        <!-- Initial Helper Text -->
+        <div id="helper-text" class="text-center mt-10">
+            <p class="text-slate-400 text-sm">Currently loaded with <span id="record-count">0</span> employee records.</p>
         </div>
     </div>
 
-    <script type="importmap">
-        { 
-            "imports": { 
-                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-            } 
+    <!-- SALARY SLIP VIEW (Hidden by Default) -->
+    <div id="slip-view" class="hidden min-h-screen items-center justify-center p-4 sm:p-6 bg-white flex-col print:p-0">
+        <div class="w-full max-w-2xl bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden flex flex-col print:shadow-none print:border-none print:w-full print:max-w-full">
+            
+            <!-- Header Actions -->
+            <div class="bg-slate-800 text-white p-4 flex justify-between items-center print-hidden">
+                <button id="btn-back" class="flex items-center text-sm font-medium hover:text-slate-200 transition-colors">
+                    <svg class="w-4 h-4 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                    Back to Search
+                </button>
+                <button id="btn-download" onclick="downloadJPG()" class="flex items-center text-sm font-medium bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors shadow-sm">
+                    <svg class="w-4 h-4 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                    Download JPG
+                </button>
+            </div>
+
+            <!-- Payslip Content Injected Here -->
+            <div id="slip-content" class="p-6 sm:p-8 bg-white print-exact print:p-0">
+                <!-- Content injected via JS -->
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        // Data Configuration
+        const rawDataString = `Sno	Emp Code 	Name of the Employee	Designation	DOJ	Fixed Gross	No of Working Days	Total Pay Days 	OT Rate 	OT Hours 	Flexi Benefit Allowance	OT Allowance	Performance Bonus	Earned Gross	PF Employee	Professional Tax	Other Deductions	Total Deductions	Net Payable	Holds	Holds Net
+2723	182116-2	Jayprakash  Jayprakash	Scaffolder	16-JUL-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+2724	179159-2	Suraj  Kumar	Scaffolder	10-JAN-26	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+2725	190858	Nanhak . .	Scaffolder	03-DEC-25	24,000	24	18	127	16	3,788	2,036	0	18,651	1,554	200	0	1,754	16,897		
+2726	181935	Satyam  Sahani	Advance Scaffolder	22-APR-25	24,000	24	20	127	14	4,209	1,782	0	20,243	1,727	200	0	1,927	18,316		
+2727	141867-4	Jai Singh Chauhan	Basic Scaffolder	04-SEP-25	24,000	24	5	127	14	1,052	1,782	0	6,397	432	0	0	432	5,965		
+2728	193259	Satyaveer  .	Helper	21-FEB-26	19,000	27	7	127	9	127	1,145	0	6,260	443	0	0	443	5,817		
+2729	184418-2	Shri  Pal	Scaffolder	14-DEC-25	24,000	24	24	127	34	5,051	2,036	2,291	26,481	1,800	200	0	2,000	24,481		
+2857	169076-2	Vivek Kumar Yadav	Scaffolder	20-MAR-25	24,000	24	24	127	14	5,051	1,782	0	23,936	1,800	200	0	2,000	21,936		
+2859	169459-2	Sonu  Yadav	Advance Scaffolder	22-NOV-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+2860	185122-2	Sukant  Singh	Helper	15-JAN-26	19,000	24	24	127	34	436	2,036	2,291	21,866	1,518	200	0	1,718	20,147		
+2861	174544-3	Doctor  Chauhan	Scaffolder	18-SEP-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+2862	190095	Satyam  Chauhan	Trainee Scaffolder	19-NOV-25	19,000	28	6	127		109	0	0	4,385	0	0	0	0	4,385		
+2864	191020	Ombaboo Singh .	Scaffolder	14-DEC-25	24,000	24	8	127	14	1,684	1,782	0	9,167	691	0	0	691	8,476		
+2865	187615	Ajay  Kumar	Advance Scaffolder	20-SEP-25	24,000	24	10	127	9	2,105	1,145	0	10,376	863	0	0	863	9,513		
+2867	174545-3	Hiro  Chauhan	Scaffolder	10-JAN-26	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+2868	154082-5	Gautam  Kumar	Scaffolder	24-DEC-25	24,000	27	5	127		1,052	0	0	4,615	0	0	0	0	4,615		
+2869	192212	Rohit  Kumar	Scaffolder	30-JAN-26	24,000	24	21	127	31	4,420	2,036	1,909	23,330	1,800	200	0	2,000	21,330		
+2870	182128-2	Akash  .	Scaffolder	01-NOV-25	24,000	24	10	127	9	2,105	1,145	0	10,376	863	0	0	863	9,513		
+2871	172603-2	Manthan  Kumar	Foreman	27-JUN-25	28,000	24	24	190	21	310	3,040	950	29,836	1,800	200	0	2,000	27,836		
+2872	170295-3	Rakesh  Singh	Scaffolder	23-JAN-25	24,000	24	19	127	5	3,999	636	0	18,175	1,640	200	309	2,149	16,026		
+2874	190245	Sunil Ray .	Scaffolder	25-NOV-25	24,000	24	24	127	27	5,051	2,036	1,400	25,590	1,800	200	0	2,000	23,590		
+2875	177872-3	Chhotu  .	Scaffolder	16-JAN-26	24,000	24	23	127	20	4,841	2,036	509	23,776	1,800	200	0	2,000	21,776		
+2876	178647	Ranjeet  Singh	Scaffolder	25-JAN-25	24,000	24	10	127	9	2,105	1,145	0	10,376	863	0	0	863	9,513		
+2877	168716-4	Sanjay Sahani .	Foreman	03-DEC-25	28,000	24	12	190	9	155	1,710	0	14,633	1,113	200	0	1,313	13,320		
+2878	190158	Sahil  Sahani	Advance Scaffolder	03-NOV-25	24,000	24	18	127	21	3,788	2,036	636	19,287	1,099	200	0	1,299	17,988		
+2879	185402	Vinod Kumar Chauhan	Scaffolder	23-JUL-25	24,000	24	23	127	34	4,841	2,036	2,291	25,558	1,800	200	0	2,000	23,558		
+2881	183225	Daulat  Yadav	Scaffolder	22-MAY-25	24,000	24	12	127	14	2,526	1,782	0	12,859	1,036	200	0	1,236	11,622		
+2882	191023	Sher Bahadur .	Scaffolder	12-DEC-25	24,000	24	24	127	30	5,051	2,036	1,782	25,972	1,800	200	0	2,000	23,972		
+2883	185120	Anish  Prajapati	Advance Scaffolder	16-JUL-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+2885	177509-2	Dheeraj Kumar Yadav	Scaffolder	15-APR-25	24,000	24	11	127	9	2,315	1,145	0	11,299	950	0	0	950	10,350	Hold	10,350
+2886	182147-2	Ashish Kumar Chauhan	Scaffolder	04-JAN-26	24,000	24	24	127	34	5,051	2,036	2,291	26,481	1,800	200	309	2,309	24,172		
+2887	147098-10	Ramsurat  Chauhan	Scaffolder	01-SEP-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+2888	189472	Rambabu  .	Scaffolder	01-NOV-25	24,000	24	14	127	7	2,946	891	0	13,814	1,209	200	0	1,409	12,405	Hold	12,405
+2889	191018	Gaurav Kumar .	Scaffolder	14-DEC-25	24,000	24	22	127	30	4,630	2,036	1,782	24,126	1,800	200	0	2,000	22,126		
+2890	190294	Manish Kumar .	Scaffolder	25-NOV-25	24,000	24	24	127	30	5,051	2,036	1,782	25,972	1,800	200	0	2,000	23,972		
+2891	192211	Dindayal  .	Scaffolder	26-JAN-26	24,000	24	22	127	22	4,630	2,036	764	23,108	1,800	200	0	2,000	21,108		
+2892	193265	Mantu Kumar Rai	Helper	18-FEB-26	19,000	27	10	127	9	182	1,145	0	8,453	633	0	0	633	7,821		
+2893	180938-3	Tunnu  Kumar	Scaffolder	12-JAN-26	24,000	24	24	127	8	5,051	1,018	0	23,172	1,800	200	309	2,309	20,863		
+2894	162815-3	Shambhu . .	Scaffolder	05-DEC-25	24,000	24	17	127	9	3,578	1,145	0	16,837	1,468	200	0	1,668	15,170		
+2895	142330-3	Sunil  .	Foreman	19-NOV-24	28,000	24	20	190	30	258	3,040	2,660	27,238	1,800	200	0	2,000	25,238		
+2896	174572-3	Nitish  Yadav	Scaffolder	18-SEP-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+2897	174551-3	Dabbu  Chauhan	Scaffolder	01-SEP-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+2898	169479-4	Dilip Kumar .	Scaffolder	03-DEC-25	24,000	24	23	127	21	4,841	2,036	636	23,903	1,800	200	0	2,000	21,903		
+2899	169435-4	Ankush  .	Scaffolder	01-SEP-25	25,000	28	6	127		1,494	0	0	5,770	0	0	0	0	5,770		
+2900	191217	Bharat  Singh	Trainee Scaffolder	30-DEC-25	19,000	24	10	127	9	182	1,145	0	8,453	633	0	0	633	7,821		
+2901	193255	Arjun Kumar Ray	Scaffolder	18-FEB-26	24,000	27	10	127	9	2,105	1,145	0	10,376	863	0	0	863	9,513		
+2902	169922-6	Raj  Kumar	Foreman	26-MAR-25	28,000	24	23	190	22	297	3,040	1,140	28,949	1,800	200	309	2,309	26,640		
+2903	161572-5	Brijesh Kumar Tiwari	Scaffolder	01-SEP-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+2904	184375	Dhermendra  Kumar	Scaffolder	26-JUN-25	24,000	24	24	127	33	5,051	2,036	2,163	26,353	1,800	200	0	2,000	24,353		
+2905	191031	Jayram  .	Scaffolder	14-DEC-25	24,000	24	8	127		1,684	0	0	7,385	691	0	0	691	6,694		
+2906	191016	Chhatrapal . .	Scaffolder	14-DEC-25	24,000	24	22	127	34	4,630	2,036	2,291	24,635	1,800	200	0	2,000	22,635		
+2907	193251	Sitoo  .	Scaffolder	18-FEB-26	24,000	27	8	127	9	1,684	1,145	0	8,530	691	0	0	691	7,840		
+2908	182132-2	Vikash Kumar Guotam	Helper	18-FEB-26	19,000	27	10	127	9	182	1,145	0	8,453	633	0	0	633	7,821		
+2909	181888-2	Ranjesh  Kumar	Helper	18-JAN-26	19,000	24	24	127	34	436	2,036	2,291	21,866	1,518	200	0	1,718	20,147		
+2910	193263	Shreyas Vilas Gedam	Helper	23-FEB-26	19,000	28	6	127		109	0	0	4,385	380	0	0	380	4,005		
+2911	193262	Vikash  Gautam	Helper	21-FEB-26	19,000	27	4	127		73	0	0	2,923	253	0	0	253	2,670		
+2912	192089	Susheel  Soni	Scaffolder	12-JAN-26	24,000	24	20	127		4,209	0	0	18,461	1,727	200	0	1,927	16,534		
+2914	192704	Suman  Kumar	Scaffolder	02-FEB-26	24,000	25	24	127	16	5,051	2,036	0	24,190	1,800	200	0	2,000	22,190		
+2915	191021	Raju Singh .	Scaffolder	12-DEC-25	24,000	24	24	127	21	5,051	2,036	636	24,826	1,800	200	0	2,000	22,826		
+2916	189620	Akhilesh Kumar Singh	Trainee Scaffolder	04-NOV-25	19,000	28	6	127		109	0	0	4,385	0	0	0	0	4,385		
+2917	169345-3	Pramod  Kumar	Scaffolder	19-JAN-26	24,000	24	22	127	5	4,630	636	0	20,944	1,800	200	0	2,000	18,944		
+2918	156125-3	Brijesh  .	Scaffolder	18-MAR-25	24,000	24	23	127	5	4,841	636	0	21,867	1,800	200	0	2,000	19,867		
+2919	183333	Vishv  Jeet	Scaffolder	25-MAY-25	24,000	24	24	127	30	5,051	2,036	1,782	25,972	1,800	200	0	2,000	23,972		
+2920	192080	Aakash  Kumar	Scaffolder	12-JAN-26	24,000	24	19	127		3,999	0	0	17,539	1,640	200	0	1,840	15,699		
+3048	191017	Deepanshu Chauhan .	Scaffolder	01-DEC-25	24,000	24	18	127	9	3,788	1,145	0	17,760	1,554	200	0	1,754	16,006		
+3049	193260	Samir Ganesh Ambildhuke	Helper	23-FEB-26	19,000	28	6	127		109	0	0	4,385	380	0	0	380	4,005		
+3050	193211	Ankit Kumar .	Helper	21-FEB-26	19,000	24	15	127	9	272	1,145	0	12,106	949	200	0	1,149	10,957		
+3053	190157	Kavi  Sahani	Advance Scaffolder	03-NOV-25	24,000	24	20	127	17	4,209	2,036	127	20,624	1,222	200	0	1,422	19,203		
+3054	186184-2	Alijan  Ansari	Scaffolder	17-JAN-26	24,000	24	24	127	31	5,051	2,036	1,909	26,099	1,800	200	0	2,000	24,099		
+3055	167451-3	Rajan  Singh	Driver	24-JAN-25	22,910	24	24	127	34	4,045	2,036	2,291	25,475	1,800	200	309	2,309	23,166		
+3056	162786	Jay  Singh	Advance Scaffolder	09-OCT-23	24,000	24	23	127	34	4,841	2,036	2,291	25,558	1,800	200	0	2,000	23,558		
+3057	181936	Vijay  Sahani	Advance Scaffolder	22-APR-25	24,000	24	12	127	5	2,526	636	0	11,713	1,036	0	0	1,036	10,677		
+3058	190148	Vivek  Kumar	Advance Scaffolder	03-NOV-25	24,000	24	24	127	9	5,051	1,145	0	23,299	1,466	200	309	1,975	21,324		
+3059	177871	Suneel  Chauhan	Scaffolder	18-DEC-24	24,000	24	24	127	30	5,051	2,036	1,782	25,972	1,800	200	0	2,000	23,972		
+3060	183349-2	Mohit Kumar .	Scaffolder	08-DEC-25	24,000	24	24	127	34	5,051	2,036	2,291	26,481	1,800	200	0	2,000	24,481		
+3061	171274-5	Mukesh  .	Scaffolder	26-MAR-25	24,000	24	22	127	14	4,630	1,782	0	22,090	1,800	200	0	2,000	20,090		
+3062	161557-7	Ankit  Chauhan	Scaffolder	01-SEP-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+3063	146966-2	Deepak Kumar Mandal	Scaffolder	02-DEC-25	24,000	24	24	127		5,051	0	0	22,154	1,800	200	0	2,000	20,154		
+3065	189868	Kasyap  Nitinkaran	Scaffolder	24-OCT-25	24,000	24	24	127	30	5,051	2,036	1,782	25,972	1,800	200	0	2,000	23,972		
+3066	117557-6	Sunil  Kumar	Scaffolder	24-MAY-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+3067	193264	Musahid  Khan	Helper	18-FEB-26	19,000	27	8	127	9	145	1,145	0	6,991	506	0	0	506	6,485		
+3068	172620-3	Ajeet  .	Scaffolder	01-NOV-25	24,000	24	10	127	9	2,105	1,145	0	10,376	863	0	0	863	9,513		
+3069	168009-3	Bhuvnesh Kumar .	Scaffolder	14-DEC-25	24,000	24	22	127	30	4,630	2,036	1,782	24,126	1,800	200	0	2,000	22,126		
+3070	181918	Ravi  Kumar	Advance Scaffolder	22-APR-25	24,000	24	17	127		3,578	0	0	15,692	1,468	200	0	1,668	14,024		
+3072	190156	Balam  Sahani	Advance Scaffolder	03-NOV-25	24,000	24	12	127	5	2,526	636	0	11,713	733	0	0	733	10,980		
+3073	190073-2	Sudhir Singh Chauhan	Scaffolder	17-JAN-26	24,000	24	22	127	35	4,630	2,036	2,418	24,762	1,800	200	0	2,000	22,762		
+3074	177500-3	Amit  Kumar	Basic Scaffolder	01-SEP-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+3075	182834-2	Rajendra Pal Singh	Scaffolder	16-JAN-26	24,000	24	21	127	21	4,420	2,036	636	22,057	1,800	200	0	2,000	20,057		
+3076	167367-2	Pappu Kumar Vishwakarma	Scaffolder	10-JAN-25	24,000	24	19	127	24	3,999	2,036	1,018	20,593	1,640	200	0	1,840	18,753		
+3077	190140	Jaike  .	Advance Scaffolder	03-NOV-25	24,000	24	21	127	21	4,420	2,036	636	22,057	1,283	200	0	1,483	20,575		
+3078	181233-2	Deepak  Chauhan	Scaffolder	21-JUN-25	24,000	26	15	127		3,157	0	0	13,846	1,772	200	0	1,972	11,874		
+3079	141348-4	Rakesh  Kumar	Scaffolder	18-JAN-26	24,000	24	24	127	26	5,051	2,036	1,273	25,463	1,800	200	0	2,000	23,463		
+3080	184414	Sanjay  Kumar	Scaffolder	27-JUN-25	24,000	24	15	127	16	3,157	2,036	0	15,882	1,295	200	0	1,495	14,387		
+3081	141456-7	Chandan  Kumar	Scaffolder	18-JAN-26	24,000	24	23	127	27	4,841	2,036	1,400	24,667	1,800	200	0	2,000	22,667		
+3082	189861	Rishi  Pal	Scaffolder	11-NOV-25	24,000	24	24	127	30	5,051	2,036	1,782	25,972	1,800	200	0	2,000	23,972		
+3083	193266	Mantu  Ray	Helper	18-FEB-26	19,000	27	10	127		182	0	0	7,308	633	0	0	633	6,675		
+3084	177855-2	Vijendra  Prajapati	Scaffolder	08-DEC-25	24,000	24	24	127	18	5,051	2,036	255	24,445	1,800	200	0	2,000	22,445		
+3085	191038	Kaju  Chauhan	Scaffolder	11-DEC-25	24,000	24	16	127	23	3,367	2,036	891	17,696	1,381	200	0	1,581	16,114		
+3086	179158-2	Manoj Kumar .	Advance Scaffolder	17-JUL-25	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+3087	155161-2	Rajkumar  .	Scaffolder	05-JAN-26	24,000	24	23	127	14	4,841	1,782	0	23,013	1,800	200	0	2,000	21,013		
+3088	192076	Anul  Ansari	Scaffolder	17-JAN-26	24,000	24	22	127	25	4,630	2,036	1,145	23,489	1,800	200	0	2,000	21,489		
+3089	149103-3	Anil  .	Advance Scaffolder	03-NOV-25	24,000	24	22	127		4,630	0	0	20,308	1,344	200	0	1,544	18,764		
+3090	179157-3	Dinesh  Surendra	Scaffolder	10-JAN-26	24,000	28	6	127		1,263	0	0	5,539	0	0	0	0	5,539		
+3091	149626-2	Murari  .	Advance Scaffolder	03-NOV-25	24,000	24	23	127	9	4,841	1,145	0	22,376	1,405	200	0	1,605	20,771		
+3092	118706-5	Ajay Kumar Yadav	Scaffolder	02-DEC-25	24,000	24	21	127	34	4,420	2,036	2,291	23,712	1,800	200	0	2,000	21,712		
+3093	189949	Sangram Kunwar Chauhan	Scaffolder	01-NOV-25	24,000	24	22	127	34	4,630	2,036	2,291	24,635	1,344	200	0	1,544	23,091`;
+
+        // Parse logic
+        function parseData(dataStr) {
+            const lines = dataStr.trim().split('\n');
+            const employees = [];
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split('\t').map(s => s.trim());
+                if (cols.length >= 19) {
+                    employees.push({
+                        id: cols[0],
+                        empCode: cols[1],
+                        name: cols[2].replace(/\s+/g, ' '),
+                        designation: cols[3],
+                        doj: cols[4],
+                        fixedGross: cols[5] || '0',
+                        workingDays: cols[6] || '0',
+                        payDays: cols[7] || '0',
+                        otRate: cols[8] || '0',
+                        otHours: cols[9] || '0',
+                        flexiAllowance: cols[10] || '0',
+                        otAllowance: cols[11] || '0',
+                        perfBonus: cols[12] || '0',
+                        earnedGross: cols[13] || '0',
+                        pf: cols[14] || '0',
+                        profTax: cols[15] || '0',
+                        otherDed: cols[16] || '0',
+                        totalDed: cols[17] || '0',
+                        netPayable: cols[18] || '0',
+                        holds: cols[19] || '',
+                        holdsNet: cols[20] || ''
+                    });
+                }
+            }
+            return employees;
         }
-    </script>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        // Initialize state
+        const employeesData = parseData(rawDataString);
+        let selectedEmployee = null;
 
-        // --- 1. CONFIGURATION ---
-        const CSV_URL = `https://docs.google.com/spreadsheets/d/e/2PACX-1vTMbJzqQVMMq0ihFb_gNbb7w93gk0ocrRkAXZoWGLDZQpl15-mJoU9W_l6Fcdnvfv0bUZ13CYmZyM1K/pub?output=csv`;
+        // DOM Elements
+        const searchInput = document.getElementById('search-input');
+        const clearBtn = document.getElementById('clear-search');
+        const resultsContainer = document.getElementById('results-container');
+        const helperText = document.getElementById('helper-text');
+        const recordCountText = document.getElementById('record-count');
+        
+        const searchView = document.getElementById('search-view');
+        const slipView = document.getElementById('slip-view');
+        const btnBack = document.getElementById('btn-back');
+        const btnDownload = document.getElementById('btn-download');
+        const slipContent = document.getElementById('slip-content');
 
-        // --- 2. SETUP ---
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87ceeb); // Sky Blue
-        scene.fog = new THREE.Fog(0x87ceeb, 20, 100);
+        // Initial setup
+        recordCountText.innerText = employeesData.length;
 
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(30, 20, 30);
-        camera.lookAt(0, 0, 0);
+        // Event Listeners
+        searchInput.addEventListener('input', handleSearch);
+        clearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            handleSearch({ target: searchInput });
+        });
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        document.body.appendChild(renderer.domElement);
+        btnBack.addEventListener('click', () => {
+            selectedEmployee = null;
+            renderViews();
+        });
 
-        const loader = new GLTFLoader();
+        // Generate JPG logic
+        function downloadJPG() {
+            if (!selectedEmployee) return;
+            
+            // Temporary visual feedback
+            const originalText = btnDownload.innerHTML;
+            btnDownload.innerHTML = `<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Generating...`;
+            btnDownload.disabled = true;
 
-        // Lighting
-        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-        const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-        sun.position.set(10, 50, 10);
-        sun.castShadow = true;
-        scene.add(sun);
+            html2canvas(slipContent, {
+                scale: 2, // Higher scale for better resolution
+                backgroundColor: '#ffffff', // Force white background
+                useCORS: true
+            }).then(canvas => {
+                const imgData = canvas.toDataURL('image/jpeg', 1.0);
+                const link = document.createElement('a');
+                
+                // Format name securely for file download
+                const safeName = selectedEmployee.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                link.download = `Salary_Slip_${selectedEmployee.empCode}_${safeName}.jpg`;
+                
+                link.href = imgData;
+                link.click();
+                
+                // Restore button
+                btnDownload.innerHTML = originalText;
+                btnDownload.disabled = false;
+            }).catch(err => {
+                console.error("Error generating JPG:", err);
+                alert("Sorry, an error occurred while generating the image.");
+                btnDownload.innerHTML = originalText;
+                btnDownload.disabled = false;
+            });
+        }
 
-        // Green Grass Floor
-        const floor = new THREE.Mesh(
-            new THREE.PlaneGeometry(200, 200),
-            new THREE.MeshStandardMaterial({ color: 0x348C31 })
-        );
-        floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true;
-        scene.add(floor);
-
-        // --- 3. OBJECT MANAGEMENT ---
-        let objectMap = new Map();
-
-        async function fetchSheetData() {
-            try {
-                document.getElementById('loadStatus').innerText = "Syncing...";
-                const response = await fetch(CSV_URL);
-                const csvData = await response.text();
-                const rows = csvData.split('\n').map(r => r.split(',').map(cell => cell.replace(/"/g, '').trim()));
-                const dataRows = rows.slice(1);
-
-                dataRows.forEach((row, index) => {
-                    // Expected Columns: Object, X, Y, Z, Color, Scale, RotateY, ModelURL
-                    const [type, x, y, z, color, scale, rotateY, modelURL] = row;
-                    if (!type) return;
-
-                    let entry = objectMap.get(index);
-
-                    // If model source changed or object doesn't exist, create it
-                    if (!entry || entry.type !== type || entry.modelURL !== modelURL) {
-                        if (entry) scene.remove(entry.mesh);
-                        
-                        const newEntry = { type, modelURL, mesh: new THREE.Group() };
-                        
-                        if (modelURL && (modelURL.includes('.glb') || modelURL.includes('.gltf'))) {
-                            // Load External 3D Model (Animals/Birds/Humans)
-                            loader.load(modelURL, (gltf) => {
-                                const model = gltf.scene;
-                                model.traverse(n => { if (n.isMesh) n.castShadow = true; });
-                                newEntry.mesh.add(model);
-                            });
-                        } else {
-                            // Basic Shapes
-                            let geo;
-                            if (type.toLowerCase() === 'sphere') geo = new THREE.SphereGeometry(0.5);
-                            else if (type.toLowerCase() === 'cone') geo = new THREE.ConeGeometry(0.5, 1);
-                            else geo = new THREE.BoxGeometry(1, 1, 1);
-                            
-                            const mat = new THREE.MeshStandardMaterial({ color: color || "#ffffff" });
-                            const basicMesh = new THREE.Mesh(geo, mat);
-                            basicMesh.castShadow = true;
-                            newEntry.mesh.add(basicMesh);
-                        }
-                        
-                        scene.add(newEntry.mesh);
-                        objectMap.set(index, newEntry);
-                        entry = newEntry;
-                    }
-
-                    // Update Position, Scale, and Rotation smoothly
-                    const s = parseFloat(scale) || 1;
-                    entry.mesh.scale.lerp(new THREE.Vector3(s, s, s), 0.1);
-                    entry.mesh.position.lerp(new THREE.Vector3(parseFloat(x), parseFloat(y), parseFloat(z)), 0.1);
-                    entry.mesh.rotation.y = THREE.MathUtils.lerp(entry.mesh.rotation.y, (parseFloat(rotateY) || 0) * (Math.PI / 180), 0.1);
-                });
-
-                document.getElementById('loadStatus').innerText = "Connected";
-            } catch (err) {
-                document.getElementById('loadStatus').innerText = "Sync Error";
+        // Search logic
+        function handleSearch(e) {
+            const term = e.target.value.trim().toLowerCase();
+            
+            if (term.length > 0) {
+                clearBtn.classList.remove('hidden');
+                helperText.classList.add('hidden');
+                
+                const filtered = employeesData.filter(emp => 
+                    emp.name.toLowerCase().includes(term) || 
+                    emp.empCode.toLowerCase().includes(term)
+                );
+                renderResults(filtered);
+            } else {
+                clearBtn.classList.add('hidden');
+                helperText.classList.remove('hidden');
+                resultsContainer.innerHTML = '';
             }
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
+        // Render functions
+        function renderResults(filtered) {
+            if (filtered.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div class="text-center py-10 bg-white rounded-xl border border-slate-200 shadow-sm text-slate-500">
+                        <svg class="w-12 h-12 text-slate-300 mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        <p class="text-lg font-medium text-slate-700">No worker found</p>
+                        <p class="text-sm">Please check the spelling.</p>
+                    </div>`;
+                return;
+            }
+
+            resultsContainer.innerHTML = filtered.map(emp => `
+                <div onclick="selectEmployee('${emp.empCode}')" class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center group">
+                    <div class="flex items-start">
+                        <div class="bg-slate-100 text-slate-600 p-2.5 rounded-lg mr-4 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-lg">${emp.name}</h3>
+                            <div class="flex flex-wrap items-center text-sm text-slate-500 gap-x-4 mt-1">
+                                <span class="flex items-center">
+                                    <svg class="w-3.5 h-3.5 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                                    ${emp.designation}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-4 sm:mt-0 self-end sm:self-auto flex items-center text-blue-600 font-medium text-sm">
+                        View Slip
+                        <svg class="w-4 h-4 ml-1" style="transform: rotate(180deg)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                    </div>
+                </div>
+            `).join('');
         }
 
-        setInterval(fetchSheetData, 1000);
-        animate();
+        window.selectEmployee = function(code) {
+            selectedEmployee = employeesData.find(e => e.empCode === code);
+            renderViews();
+        };
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+        function renderViews() {
+            if (selectedEmployee) {
+                // Show Slip, Hide Search
+                searchView.classList.add('hidden');
+                searchView.classList.remove('flex');
+                slipView.classList.remove('hidden');
+                slipView.classList.add('flex');
+                
+                generateSlipHTML(selectedEmployee);
+            } else {
+                // Show Search, Hide Slip
+                slipView.classList.add('hidden');
+                slipView.classList.remove('flex');
+                searchView.classList.remove('hidden');
+                searchView.classList.add('flex');
+            }
+        }
+
+        function generateSlipHTML(emp) {
+            const otText = emp.otHours !== '0' ? `(${emp.otHours} hrs)` : '';
+            
+            let holdsWarning = '';
+            if (emp.holds) {
+                holdsWarning = `
+                <div class="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-lg mb-6 flex items-start">
+                    <svg class="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                    <div>
+                        <p class="font-bold">Payment Status: ${emp.holds}</p>
+                        <p class="text-sm mt-1">Net Hold Amount: ₹${emp.holdsNet}</p>
+                    </div>
+                </div>`;
+            }
+
+            slipContent.innerHTML = `
+                <!-- Company Header -->
+                <div class="text-center mb-8 border-b-2 border-slate-200 pb-6">
+                    <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">EMPLOYEE SALARY SLIP</h1>
+                    <p class="text-slate-500 mt-1 text-sm sm:text-base">Confidential Document</p>
+                </div>
+
+                <!-- Employee Details Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-8 bg-slate-50 p-4 sm:p-5 rounded-lg border border-slate-100">
+                    <div class="space-y-3">
+                        <div class="flex justify-between sm:justify-start">
+                            <span class="text-slate-500 w-32 font-medium">Employee Name</span>
+                            <span class="font-semibold text-slate-900">${emp.name}</span>
+                        </div>
+                        <div class="flex justify-between sm:justify-start">
+                            <span class="text-slate-500 w-32 font-medium">Designation</span>
+                            <span class="font-semibold text-slate-900">${emp.designation}</span>
+                        </div>
+                    </div>
+                    <div class="space-y-3">
+                        <div class="flex justify-between sm:justify-start">
+                            <span class="text-slate-500 w-32 font-medium">Date of Joining</span>
+                            <span class="font-semibold text-slate-900">${emp.doj}</span>
+                        </div>
+                        <div class="flex justify-between sm:justify-start">
+                            <span class="text-slate-500 w-32 font-medium">Total Work Days</span>
+                            <span class="font-semibold text-slate-900">24</span>
+                        </div>
+                        <div class="flex justify-between sm:justify-start">
+                            <span class="text-slate-500 w-32 font-medium">Total Pay Days</span>
+                            <span class="font-semibold text-slate-900">${emp.payDays}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Financial Details Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-6">
+                    
+                    <!-- Earnings Column -->
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800 border-b border-slate-300 pb-2 mb-3 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                            Earnings
+                        </h3>
+                        <div class="space-y-2">
+                            <div class="flex justify-between py-1 border-b border-slate-100">
+                                <span class="text-slate-600">Fixed Gross</span>
+                                <span class="font-medium">₹${emp.fixedGross}</span>
+                            </div>
+                            <div class="flex justify-between py-1 border-b border-slate-100">
+                                <span class="text-slate-600">OT Allowance ${otText}</span>
+                                <span class="font-medium">₹${emp.otAllowance || '0'}</span>
+                            </div>
+                            <div class="flex justify-between py-1 border-b border-slate-100">
+                                <span class="text-slate-600">Performance Bonus</span>
+                                <span class="font-medium">₹${emp.perfBonus || '0'}</span>
+                            </div>
+                        </div>
+                        <div class="flex justify-between py-3 mt-2 bg-green-50 px-3 rounded text-green-800 font-bold border border-green-100">
+                            <span>Total Earned Gross</span>
+                            <span>₹${emp.earnedGross}</span>
+                        </div>
+                    </div>
+
+                    <!-- Deductions Column -->
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800 border-b border-slate-300 pb-2 mb-3 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                            Deductions
+                        </h3>
+                        <div class="space-y-2">
+                            <div class="flex justify-between py-1 border-b border-slate-100">
+                                <span class="text-slate-600">PF Employee</span>
+                                <span class="font-medium">₹${emp.pf || '0'}</span>
+                            </div>
+                            <div class="flex justify-between py-1 border-b border-slate-100">
+                                <span class="text-slate-600">Professional Tax</span>
+                                <span class="font-medium">₹${emp.profTax || '0'}</span>
+                            </div>
+                            <div class="flex justify-between py-1 border-b border-slate-100">
+                                <span class="text-slate-600">Other Deductions</span>
+                                <span class="font-medium">₹${emp.otherDed || '0'}</span>
+                            </div>
+                        </div>
+                        <div class="flex justify-between py-3 mt-2 bg-red-50 px-3 rounded text-red-800 font-bold border border-red-100 mt-auto">
+                            <span>Total Deductions</span>
+                            <span>₹${emp.totalDed || '0'}</span>
+                        </div>
+                    </div>
+
+                </div>
+
+                ${holdsWarning}
+
+                <!-- Final Net Payable -->
+                <div class="bg-slate-800 text-white p-5 sm:p-6 rounded-xl flex flex-col sm:flex-row justify-between items-center shadow-inner">
+                    <span class="text-lg sm:text-xl font-medium mb-2 sm:mb-0">Net Payable Amount</span>
+                    <span class="text-3xl sm:text-4xl font-bold tracking-tight">₹${emp.netPayable}</span>
+                </div>
+
+                <div class="mt-8 text-center text-xs text-slate-400 border-t border-slate-100 pt-4">
+                    <p>This is a system generated slip and does not require a physical signature.</p>
+                </div>
+            `;
+        }
+
     </script>
 </body>
 </html>
